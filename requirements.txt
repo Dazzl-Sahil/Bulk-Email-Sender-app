@@ -1,2 +1,1 @@
-streamlit
-pandas
+pip freeze > requirements.txt
