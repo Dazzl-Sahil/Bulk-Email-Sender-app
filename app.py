@@ -44,9 +44,23 @@ with st.container():
 # --- Send Button ---
 if st.button("🚀 Send Emails"):
     if uploaded_file is not None and sender_email and app_password:
-        df = pd.read_csv(uploaded_file)
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.login(sender_email, app_password)
+        try:
+            df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')  # Handle encoding issues
+        except Exception as e:
+            st.error(f"❌ Failed to read CSV: {e}")
+            st.stop()
+
+        required_columns = ['email', 'first_name', 'last_name']
+        if not all(col in df.columns for col in required_columns):
+            st.error(f"❌ CSV must contain the following columns: {', '.join(required_columns)}")
+            st.stop()
+
+        try:
+            server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+            server.login(sender_email, app_password)
+        except Exception as e:
+            st.error(f"❌ Failed to connect to SMTP server: {e}")
+            st.stop()
 
         progress = st.progress(0)
         total = len(df)
