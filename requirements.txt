@@ -1,3 +1,15 @@
 streamlit==1.27.0
 pandas==1.5.3
 plotly==5.15.0
+numpy==1.23.5
+altair==5.5.0
+blinker==1.9.0
+cachetools==5.5.2
+click==8.3.0
+importlib-metadata==6.11.0
+packaging==23.2
+rich==14.1.0
+markdown-it-py==4.0.0
+mdurl==0.1.2
+pygments==2.19.2
+Pillow==9.5.0
