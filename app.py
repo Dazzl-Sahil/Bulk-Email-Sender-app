@@ -8,6 +8,9 @@ from io import BytesIO
 import os
 import json
 
+# NEW: Quill Editor
+from streamlit_quill import st_quill  
+
 # ----------------- SETTINGS -----------------
 STATE_FILE = "email_progress.json"
 
@@ -15,7 +18,15 @@ STATE_FILE = "email_progress.json"
 st.set_page_config(page_title="Bulk Email Sender", page_icon="📧", layout="centered")
 
 st.title("📧 Bulk Email Sender")
-st.markdown("Send personalized bulk emails with placeholders, resume option, and reminders.")
+st.markdown("Send personalized bulk emails with placeholders, resume option, reminders, and **rich text formatting**.")
+
+st.info("""
+💡 Formatting is easy now → just use the editor toolbar:
+- **B** = Bold
+- *I* = Italic
+- 🎨 = Text Color / Highlight
+- Lists, Links, Quotes also supported
+""")
 
 # ----------------- Login Section -----------------
 with st.container():
@@ -60,24 +71,26 @@ with st.container():
 
 # ----------------- Template Section -----------------
 with st.container():
-    st.subheader("📝 Email Templates")
+    st.subheader("📝 Email Templates (Rich Text)")
 
     subject_template = st.text_input(
         "Subject (use {full_name}, {first_name}, {last_name})"
     )
 
-    fresh_template = st.text_area(
-        "✉️ Fresh Mail Template (use {first_name}, {last_name}, {full_name})",
-        height=200,
-        placeholder="Dear {first_name},\n\nThis is my initial outreach.\n\nRegards,\n{full_name}"
+    st.markdown("### ✉️ Fresh Mail Template")
+    fresh_template = st_quill(
+        value="Dear {first_name},<br><br>This is my <b>initial outreach</b>.<br><br>Regards,<br>{full_name}",
+        placeholder="Write your Fresh Mail here...",
+        key="fresh_template",
     )
 
     reminder_template = None
     if email_type != "Fresh Mail":
-        reminder_template = st.text_area(
-            f"🔄 {email_type} Template (use {{first_name}}, {{last_name}}, {{full_name}})",
-            height=200,
-            placeholder="Dear {first_name},\n\nJust following up regarding my previous email.\n\nBest regards,\n{full_name}"
+        st.markdown(f"### 🔄 {email_type} Template")
+        reminder_template = st_quill(
+            value="Dear {first_name},<br><br><span style='color:blue;'>Just following up</span> regarding my previous email.<br><br>Best regards,<br>{full_name}",
+            placeholder="Write your Reminder here...",
+            key="reminder_template",
         )
 
 # ----------------- Delay -----------------
@@ -146,18 +159,16 @@ if st.button("🚀 Send Emails"):
                 )
                 body = (
                     reminder_body
-                    + "\n\n----- Original Message -----\n"
+                    + "<br><br>----- Original Message -----<br>"
                     + original_body
                 )
 
-            # Convert to HTML
-            body_html = body.replace("\n", "<br>")
-
+            # Use HTML body
             msg = MIMEMultipart()
             msg["From"] = f"{sender_name} <{sender_email}>"
             msg["To"] = recipient
             msg["Subject"] = subject
-            msg.attach(MIMEText(body_html, "html"))
+            msg.attach(MIMEText(body, "html"))
 
             try:
                 server.sendmail(sender_email, recipient, msg.as_string())
