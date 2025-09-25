@@ -16,15 +16,13 @@
       ]
     }
   },
-  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y < packages.txt || true && [ -f requirements.txt ] && pip3 install --user -r requirements.txt && pip3 install --user streamlit && echo '✅ Packages installed and Requirements met'",
+  "updateContentCommand": "pip install --upgrade pip setuptools wheel && [ -f requirements.txt ] && pip install --user -r requirements.txt && pip install --user streamlit && echo '✅ Packages installed and Requirements met'",
   "postAttachCommand": "streamlit run app.py --server.enableCORS false --server.enableXsrfProtection false",
   "portsAttributes": {
     "8501": {
-      "label": "Application",
+      "label": "Bulk Email Sender App",
       "onAutoForward": "openPreview"
     }
   },
-  "forwardPorts": [
-    8501
-  ]
+  "forwardPorts": [8501]
 }
