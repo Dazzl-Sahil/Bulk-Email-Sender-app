@@ -7,7 +7,6 @@ from email.mime.multipart import MIMEMultipart
 from io import BytesIO
 import os
 import json
-from streamlit_quill import st_quill
 import plotly.graph_objects as go
 
 # ----------------- SETTINGS -----------------
@@ -47,7 +46,6 @@ with st.sidebar:
     st.markdown("<h3 style='color:#4a90e2'>Steps Guide</h3>", unsafe_allow_html=True)
     
     steps = ["Login", "Upload CSV", "Email Template", "Send Emails"]
-    
     current_step = 0
     sender_email = st.session_state.get("sender_email", None)
     uploaded_file = st.session_state.get("uploaded_file", None)
@@ -82,7 +80,7 @@ st.image("https://images.unsplash.com/photo-1581091215360-1c2b5e3b47b4?auto=form
 # ----------------- APP TITLE -----------------
 st.title("📧 Bulk Email Sender")
 st.markdown("Send personalized bulk emails with reminders, rich text formatting, resume, animated countdown, and live progress charts.")
-st.info("💡 Features: Rich Text Editor, Resume, Reminders, Live countdown & pie chart, Modern UI")
+st.info("💡 Features: Rich Text Editor (fallback to plain-text), Resume, Reminders, Live countdown & pie chart, Modern UI")
 
 # ----------------- LOGIN -----------------
 with st.container():
@@ -121,24 +119,45 @@ with st.container():
     st.markdown("<h3 style='color:#4a90e2'>📌 Email Type & Templates</h3>", unsafe_allow_html=True)
     email_type = st.radio("Choose Email Type", ["Fresh Mail", "Reminder 1", "Reminder 2", "Reminder 3"], horizontal=True)
     subject_template = st.text_input("Subject (use {full_name}, {first_name}, {last_name})")
-    
-    quill_toolbar = [
-        ["bold", "italic", "underline", "strike"],
-        [{"color": []}, {"background": []}],
-        [{"font": []}],
-        [{"size": ["small", False, "large", "huge"]}],
-        [{"list": "ordered"}, {"list": "bullet"}],
-        ["link", "blockquote", "code-block"],
-    ]
-    
-    st.markdown("### ✉️ Fresh Mail Template")
-    fresh_template_html = st_quill(value="Dear {first_name},<br><br>This is my <b>initial outreach</b>.<br><br>Regards,<br>{full_name}", html=True, toolbar=quill_toolbar)
-    
-    reminder_template_html = None
-    if email_type != "Fresh Mail":
-        st.markdown(f"### 🔄 {email_type} Template")
-        reminder_template_html = st_quill(value="Dear {first_name},<br><br><span style='color:blue;'>Just following up</span> regarding my previous email.<br><br>Best regards,<br>{full_name}", html=True, toolbar=quill_toolbar)
-    
+
+    # Try to import st_quill
+    try:
+        from streamlit_quill import st_quill
+        quill_toolbar = [
+            ["bold", "italic", "underline", "strike"],
+            [{"color": []}, {"background": []}],
+            [{"font": []}],
+            [{"size": ["small", False, "large", "huge"]}],
+            [{"list": "ordered"}, {"list": "bullet"}],
+            ["link", "blockquote", "code-block"],
+        ]
+        st.markdown("### ✉️ Fresh Mail Template (Rich Text)")
+        fresh_template_html = st_quill(
+            value="Dear {first_name},<br><br>This is my <b>initial outreach</b>.<br><br>Regards,<br>{full_name}",
+            html=True,
+            toolbar=quill_toolbar
+        )
+        if email_type != "Fresh Mail":
+            st.markdown(f"### 🔄 {email_type} Template (Rich Text)")
+            reminder_template_html = st_quill(
+                value="Dear {first_name},<br><br><span style='color:blue;'>Just following up</span> regarding my previous email.<br><br>Best regards,<br>{full_name}",
+                html=True,
+                toolbar=quill_toolbar
+            )
+    except Exception as e:
+        st.warning("⚠️ Rich Text Editor failed to load. Falling back to plain-text input.")
+        fresh_template_html = st.text_area(
+            "Fresh Mail Template (Plain Text)",
+            value="Dear {first_name},\n\nThis is my initial outreach.\n\nRegards,\n{full_name}",
+            height=200
+        )
+        if email_type != "Fresh Mail":
+            reminder_template_html = st.text_area(
+                f"{email_type} Template (Plain Text)",
+                value="Dear {first_name},\n\nJust following up regarding my previous email.\n\nBest regards,\n{full_name}",
+                height=200
+            )
+
     st.session_state.email_template_ready = True
 
 # ----------------- DELAY -----------------
@@ -205,35 +224,4 @@ if st.button("🚀 Send Emails"):
             # Update progress & status
             progress.progress((idx + 1)/total)
             status_placeholder.markdown(
-                f"<div class='progress-box' style='background-color:#dff0d8;color:#3c763d;'>✅ Sent: {success_count} | ❌ Failed: {fail_count} | 📩 Total: {total}</div>",
-                unsafe_allow_html=True
-            )
-
-            # Update Pie Chart
-            fig = go.Figure(data=[go.Pie(labels=['Sent', 'Failed'], values=[success_count, fail_count], hole=0.4)])
-            fig.update_traces(marker=dict(colors=['#4CAF50','#F44336']))
-            fig.update_layout(title="📊 Email Sending Progress", margin=dict(t=40, b=0, l=0, r=0))
-            pie_placeholder.plotly_chart(fig, use_container_width=True)
-
-            # Animated Countdown
-            if idx < total - 1:
-                countdown_bar = st.progress(0)
-                for remaining in range(delay,0,-1):
-                    countdown_placeholder.markdown(f"⏳ Waiting **{remaining} seconds** before next email...")
-                    countdown_bar.progress(int((delay - remaining + 1)/delay * 100))
-                    time.sleep(1)
-                countdown_bar.empty()
-                countdown_placeholder.empty()
-
-        server.quit()
-        st.success(f"🎉 Process completed!\n\n✅ Sent: {success_count}\n❌ Failed: {fail_count}\n📩 Total: {total}")
-
-        if fail_count > 0:
-            failed_df = pd.DataFrame(failed_emails)
-            buffer = BytesIO()
-            failed_df.to_csv(buffer, index=False)
-            buffer.seek(0)
-            st.error("Some emails failed. Download the list below:")
-            st.download_button(label="⬇️ Download Failed Emails CSV", data=buffer, file_name="failed_emails.csv", mime="text/csv")
-    else:
-        st.warning("⚠️ Please provide login details and upload a valid CSV.")
+                f"<div class='progress-box' style='background-color:#dff0d8;color
