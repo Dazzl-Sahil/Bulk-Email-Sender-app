@@ -4,14 +4,21 @@ import pandas as pd
 import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from io import BytesIO
+import os
+import json
+from datetime import datetime
+
+# ----------------- SETTINGS -----------------
+STATE_FILE = "email_progress.json"
 
 # Page config
 st.set_page_config(page_title="Bulk Email Sender", page_icon="📧", layout="centered")
 
 st.title("📧 Bulk Email Sender")
-st.markdown("Send personalized bulk emails with placeholders and delay control.")
+st.markdown("Send personalized bulk emails with placeholders, resume option, and reminders.")
 
-# --- Login Section ---
+# ----------------- Login Section -----------------
 with st.container():
     st.subheader("🔐 Login Details")
     col1, col2 = st.columns(2)
@@ -21,80 +28,174 @@ with st.container():
     with col2:
         app_password = st.text_input("App Password", type="password")
 
-# --- Upload Section ---
+# ----------------- Upload Section -----------------
+df = None
 with st.container():
     st.subheader("📂 Upload Recipient List")
-    st.markdown("CSV must contain: **email, first_name, last_name**")
+    st.markdown("CSV must contain: **first_name,last_name,email**")
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
-# --- Email Template Section ---
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+
+            required_cols = {"email", "first_name", "last_name"}
+            if not required_cols.issubset(df.columns):
+                st.error(f"❌ CSV missing required columns. Found: {list(df.columns)}")
+                df = None
+            else:
+                st.write("📊 Preview of uploaded data (first 5 rows):")
+                st.dataframe(df.head())
+
+        except Exception as e:
+            st.error(f"❌ Could not read CSV: {e}")
+
+# ----------------- Email Options -----------------
 with st.container():
-    st.subheader("📝 Email Template")
-    subject_template = st.text_input("Subject (use {full_name}, {first_name}, {last_name})")
-    body_template = st.text_area(
-        "Email Body (Markdown supported — use {first_name}, {last_name}, {full_name})",
-        height=200
+    st.subheader("📌 Email Type")
+    email_type = st.radio(
+        "Choose Email Type",
+        ["Fresh Mail", "Reminder 1", "Reminder 2", "Reminder 3"],
+        horizontal=True,
     )
 
-# --- Delay Control ---
+    fresh_date = None
+    if email_type != "Fresh Mail":
+        fresh_date = st.date_input("📅 Date when Fresh Mail was sent")
+
+# ----------------- Template Section -----------------
+with st.container():
+    st.subheader("📝 Email Template")
+    subject_template = st.text_input(
+        "Subject (use {full_name}, {first_name}, {last_name})"
+    )
+    body_template = st.text_area(
+        "Email Body (use {first_name}, {last_name}, {full_name})",
+        height=200,
+        placeholder="Dear {first_name},\n\nGreetings! Hope this email finds you well.\n\nYour message here.\n\nRegards,\n{full_name}"
+    )
+
+# ----------------- Delay -----------------
 with st.container():
     st.subheader("⏳ Sending Options")
-    delay = st.slider("Delay between emails (seconds)", min_value=10, max_value=120, value=30, step=5)
+    delay = st.slider(
+        "Delay between emails (seconds)", min_value=10, max_value=120, value=30, step=5
+    )
 
-# --- Send Button ---
+# ----------------- Resume Logic -----------------
+def load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    return {"last_sent_index": -1}
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+# ----------------- Send Emails -----------------
 if st.button("🚀 Send Emails"):
-    if uploaded_file is not None and sender_email and app_password:
-        try:
-            df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')  # Handle encoding issues
-        except Exception as e:
-            st.error(f"❌ Failed to read CSV: {e}")
-            st.stop()
-
-        required_columns = ['email', 'first_name', 'last_name']
-        if not all(col in df.columns for col in required_columns):
-            st.error(f"❌ CSV must contain the following columns: {', '.join(required_columns)}")
-            st.stop()
+    if df is not None and sender_email and app_password:
+        # Resume from last state
+        state = load_state()
+        start_index = state.get("last_sent_index", -1) + 1
 
         try:
             server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
             server.login(sender_email, app_password)
         except Exception as e:
-            st.error(f"❌ Failed to connect to SMTP server: {e}")
+            st.error(f"❌ Login failed: {e}")
             st.stop()
 
         progress = st.progress(0)
-        total = len(df)
+        status_placeholder = st.empty()
+        countdown_placeholder = st.empty()
 
-        for idx, row in df.iterrows():
-            recipient = row['email']
-            first = row['first_name']
-            last = row['last_name']
+        total = len(df)
+        success_count = 0
+        fail_count = 0
+        failed_emails = []
+
+        for idx, row in df.iloc[start_index:].iterrows():
+            recipient = row["email"]
+            first = row["first_name"]
+            last = row["last_name"]
             full_name = f"{first} {last}"
 
-            # Replace placeholders
-            subject = subject_template.format(first_name=first, last_name=last, full_name=full_name)
-            body = body_template.format(first_name=first, last_name=last, full_name=full_name)
+            # Subject and Body with placeholders
+            subject = subject_template.format(
+                first_name=first, last_name=last, full_name=full_name
+            )
+            body = body_template.format(
+                first_name=first, last_name=last, full_name=full_name
+            )
+
+            # Add reminder trail
+            if email_type != "Fresh Mail" and fresh_date:
+                body = (
+                    f"Dear {first},\n\nJust following up on my earlier email sent on {fresh_date}.\n\n"
+                    + body
+                    + f"\n\n----- Original Message -----\n{body_template}"
+                )
+
+            # Convert to HTML
+            body_html = body.replace("\n", "<br>")
 
             msg = MIMEMultipart()
             msg["From"] = f"{sender_name} <{sender_email}>"
             msg["To"] = recipient
             msg["Subject"] = subject
-            msg.attach(MIMEText(body, "html"))
+            msg.attach(MIMEText(body_html, "html"))
 
             try:
                 server.sendmail(sender_email, recipient, msg.as_string())
-                st.success(f"✅ Sent to {recipient}")
+                success_count += 1
+                state["last_sent_index"] = idx
+                save_state(state)  # Save progress
             except Exception as e:
-                st.error(f"❌ Failed for {recipient}: {e}")
+                fail_count += 1
+                failed_emails.append(
+                    {
+                        "email": recipient,
+                        "first_name": first,
+                        "last_name": last,
+                        "error": str(e),
+                    }
+                )
 
+            # Update progress
             progress.progress((idx + 1) / total)
+            status_placeholder.markdown(
+                f"✅ Sent: {success_count} | ❌ Failed: {fail_count} | 📩 Total: {total}"
+            )
 
-            # Delay before sending the next email
+            # Delay countdown
             if idx < total - 1:
-                st.info(f"⏳ Waiting {delay} seconds before next email...")
-                time.sleep(delay)
+                for remaining in range(delay, 0, -1):
+                    countdown_placeholder.markdown(f"⏳ Waiting **{remaining} seconds** before next email...")
+                    time.sleep(1)
 
         server.quit()
-        st.success("🎉 All emails sent successfully!")
+
+        # --- Final Summary ---
+        st.success(
+            f"🎉 Process completed!\n\n✅ Sent: {success_count}\n❌ Failed: {fail_count}\n📩 Total: {total}"
+        )
+        countdown_placeholder.empty()  # Clear timer
+
+        # Export failed emails if any
+        if fail_count > 0:
+            failed_df = pd.DataFrame(failed_emails)
+            buffer = BytesIO()
+            failed_df.to_csv(buffer, index=False)
+            buffer.seek(0)
+
+            st.error("Some emails failed. Download the list below:")
+            st.download_button(
+                label="⬇️ Download Failed Emails CSV",
+                data=buffer,
+                file_name="failed_emails.csv",
+                mime="text/csv",
+            )
     else:
-        st.warning("⚠️ Please provide login details and upload CSV.")
+        st.warning("⚠️ Please provide login details and upload a valid CSV.")
