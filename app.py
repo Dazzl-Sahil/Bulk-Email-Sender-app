@@ -7,7 +7,6 @@ from email.mime.multipart import MIMEMultipart
 from io import BytesIO
 import os
 import json
-from datetime import datetime
 
 # ----------------- SETTINGS -----------------
 STATE_FILE = "email_progress.json"
@@ -59,21 +58,27 @@ with st.container():
         horizontal=True,
     )
 
-    fresh_date = None
-    if email_type != "Fresh Mail":
-        fresh_date = st.date_input("📅 Date when Fresh Mail was sent")
-
 # ----------------- Template Section -----------------
 with st.container():
-    st.subheader("📝 Email Template")
+    st.subheader("📝 Email Templates")
+
     subject_template = st.text_input(
         "Subject (use {full_name}, {first_name}, {last_name})"
     )
-    body_template = st.text_area(
-        "Email Body (use {first_name}, {last_name}, {full_name})",
+
+    fresh_template = st.text_area(
+        "✉️ Fresh Mail Template (use {first_name}, {last_name}, {full_name})",
         height=200,
-        placeholder="Dear {first_name},\n\nGreetings! Hope this email finds you well.\n\nYour message here.\n\nRegards,\n{full_name}"
+        placeholder="Dear {first_name},\n\nThis is my initial outreach.\n\nRegards,\n{full_name}"
     )
+
+    reminder_template = None
+    if email_type != "Fresh Mail":
+        reminder_template = st.text_area(
+            f"🔄 {email_type} Template (use {{first_name}}, {{last_name}}, {{full_name}})",
+            height=200,
+            placeholder="Dear {first_name},\n\nJust following up regarding my previous email.\n\nBest regards,\n{full_name}"
+        )
 
 # ----------------- Delay -----------------
 with st.container():
@@ -122,20 +127,27 @@ if st.button("🚀 Send Emails"):
             last = row["last_name"]
             full_name = f"{first} {last}"
 
-            # Subject and Body with placeholders
+            # Subject with placeholders
             subject = subject_template.format(
                 first_name=first, last_name=last, full_name=full_name
             )
-            body = body_template.format(
-                first_name=first, last_name=last, full_name=full_name
-            )
 
-            # Add reminder trail
-            if email_type != "Fresh Mail" and fresh_date:
+            # Email body logic
+            if email_type == "Fresh Mail":
+                body = fresh_template.format(
+                    first_name=first, last_name=last, full_name=full_name
+                )
+            else:
+                reminder_body = reminder_template.format(
+                    first_name=first, last_name=last, full_name=full_name
+                )
+                original_body = fresh_template.format(
+                    first_name=first, last_name=last, full_name=full_name
+                )
                 body = (
-                    f"Dear {first},\n\nJust following up on my earlier email sent on {fresh_date}.\n\n"
-                    + body
-                    + f"\n\n----- Original Message -----\n{body_template}"
+                    reminder_body
+                    + "\n\n----- Original Message -----\n"
+                    + original_body
                 )
 
             # Convert to HTML
@@ -172,7 +184,9 @@ if st.button("🚀 Send Emails"):
             # Delay countdown
             if idx < total - 1:
                 for remaining in range(delay, 0, -1):
-                    countdown_placeholder.markdown(f"⏳ Waiting **{remaining} seconds** before next email...")
+                    countdown_placeholder.markdown(
+                        f"⏳ Waiting **{remaining} seconds** before next email..."
+                    )
                     time.sleep(1)
 
         server.quit()
