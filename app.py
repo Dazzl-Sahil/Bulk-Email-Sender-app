@@ -76,7 +76,7 @@ with st.sidebar:
 st.image("https://images.unsplash.com/photo-1581091215360-1c2b5e3b47b4?auto=format&fit=crop&w=1200&q=80", use_column_width=True)
 st.title("📧 Bulk Email Sender")
 st.markdown("Send personalized bulk emails with reminders, resume, animated countdown, and live progress charts.")
-st.info("💡 Features: Plain Text Email Templates, Resume, Reminders, Countdown & Pie Chart, Modern UI")
+st.info("💡 Features: HTML formatting, Resume, Reminders, Countdown & Pie Chart, Modern UI")
 
 # ----------------- LOGIN -----------------
 with st.container():
@@ -116,10 +116,10 @@ with st.container():
     email_type = st.radio("Choose Email Type", ["Fresh Mail", "Reminder 1", "Reminder 2", "Reminder 3"], horizontal=True)
     subject_template = st.text_input("Subject (use {full_name}, {first_name}, {last_name})")
     
-    st.markdown("### ✉️ Email Body Template")
+    st.markdown("### ✉️ Email Body Template (HTML allowed: <b>, <i>, <span style='color:red;'>color</span>)")
     fresh_template_body = st.text_area(
         "Fresh Mail Template",
-        value="Dear {first_name},\n\nThis is my initial outreach.\n\nRegards,\n{full_name}",
+        value="Dear {first_name},\n\nThis is my <b>initial outreach</b>.\n\nRegards,\n{full_name}",
         height=200
     )
     
@@ -177,13 +177,13 @@ if st.button("🚀 Send Emails"):
             else:
                 reminder_body = reminder_template_body.format(first_name=first, last_name=last, full_name=full_name)
                 original_body = state.get("fresh_mail_body", "").format(first_name=first, last_name=last, full_name=full_name)
-                body = reminder_body + "\n\n----- Original Message -----\n" + original_body
+                body = reminder_body + "<br><br>----- Original Message -----<br>" + original_body
 
             msg = MIMEMultipart()
             msg["From"] = f"{sender_name} <{sender_email}>"
             msg["To"] = recipient
             msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain"))
+            msg.attach(MIMEText(body, "html"))
 
             try:
                 server.sendmail(sender_email, recipient, msg.as_string())
