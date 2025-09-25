@@ -1,11 +1,3 @@
-# Core Streamlit
 streamlit==1.27.0
-
-# Data Handling
 pandas==1.6.2
-
-# Charts & Graphs
 plotly==5.15.0
-
-# Rich Text Editor (GitHub source for Streamlit Cloud compatibility)
-git+https://github.com/okld/streamlit-quill.git@master
