@@ -34,7 +34,7 @@ def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
             return json.load(f)
-    return {"last_sent_index": -1, "fresh_mail_html": ""}
+    return {"last_sent_index": -1, "fresh_mail_body": ""}
 
 def save_state(state):
     with open(STATE_FILE, "w") as f:
@@ -44,8 +44,8 @@ def save_state(state):
 with st.sidebar:
     st.image("https://images.unsplash.com/photo-1605902711622-cfb43c4438d2?auto=format&fit=crop&w=400&q=80", use_column_width=True)
     st.markdown("<h3 style='color:#4a90e2'>Steps Guide</h3>", unsafe_allow_html=True)
-    
     steps = ["Login", "Upload CSV", "Email Template", "Send Emails"]
+    
     current_step = 0
     sender_email = st.session_state.get("sender_email", None)
     uploaded_file = st.session_state.get("uploaded_file", None)
@@ -63,24 +63,20 @@ with st.sidebar:
             st.markdown(f"<div class='step'>{step}</div>", unsafe_allow_html=True)
     
     st.markdown("<hr>", unsafe_allow_html=True)
-    
     if st.button("⚠️ Reset Progress"):
         if os.path.exists(STATE_FILE):
             os.remove(STATE_FILE)
             st.success("✅ Progress reset successfully!")
         else:
             st.info("ℹ️ No progress file found.")
-    
     st.markdown("[📖 Documentation](https://your-documentation-link.com)")
     st.markdown("[✉️ Contact Support](mailto:support@example.com)")
 
-# ----------------- IMAGE BANNER -----------------
-st.image("https://images.unsplash.com/photo-1581091215360-1c2b5e3b47b4?auto=format&fit=crop&w=1200&q=80", use_column_width=True)
-
 # ----------------- APP TITLE -----------------
+st.image("https://images.unsplash.com/photo-1581091215360-1c2b5e3b47b4?auto=format&fit=crop&w=1200&q=80", use_column_width=True)
 st.title("📧 Bulk Email Sender")
-st.markdown("Send personalized bulk emails with reminders, rich text formatting, resume, animated countdown, and live progress charts.")
-st.info("💡 Features: Rich Text Editor (fallback to plain-text), Resume, Reminders, Live countdown & pie chart, Modern UI")
+st.markdown("Send personalized bulk emails with reminders, resume, animated countdown, and live progress charts.")
+st.info("💡 Features: Plain Text Email Templates, Resume, Reminders, Countdown & Pie Chart, Modern UI")
 
 # ----------------- LOGIN -----------------
 with st.container():
@@ -119,45 +115,22 @@ with st.container():
     st.markdown("<h3 style='color:#4a90e2'>📌 Email Type & Templates</h3>", unsafe_allow_html=True)
     email_type = st.radio("Choose Email Type", ["Fresh Mail", "Reminder 1", "Reminder 2", "Reminder 3"], horizontal=True)
     subject_template = st.text_input("Subject (use {full_name}, {first_name}, {last_name})")
-
-    # Try to import st_quill
-    try:
-        from streamlit_quill import st_quill
-        quill_toolbar = [
-            ["bold", "italic", "underline", "strike"],
-            [{"color": []}, {"background": []}],
-            [{"font": []}],
-            [{"size": ["small", False, "large", "huge"]}],
-            [{"list": "ordered"}, {"list": "bullet"}],
-            ["link", "blockquote", "code-block"],
-        ]
-        st.markdown("### ✉️ Fresh Mail Template (Rich Text)")
-        fresh_template_html = st_quill(
-            value="Dear {first_name},<br><br>This is my <b>initial outreach</b>.<br><br>Regards,<br>{full_name}",
-            html=True,
-            toolbar=quill_toolbar
-        )
-        if email_type != "Fresh Mail":
-            st.markdown(f"### 🔄 {email_type} Template (Rich Text)")
-            reminder_template_html = st_quill(
-                value="Dear {first_name},<br><br><span style='color:blue;'>Just following up</span> regarding my previous email.<br><br>Best regards,<br>{full_name}",
-                html=True,
-                toolbar=quill_toolbar
-            )
-    except Exception as e:
-        st.warning("⚠️ Rich Text Editor failed to load. Falling back to plain-text input.")
-        fresh_template_html = st.text_area(
-            "Fresh Mail Template (Plain Text)",
-            value="Dear {first_name},\n\nThis is my initial outreach.\n\nRegards,\n{full_name}",
+    
+    st.markdown("### ✉️ Email Body Template")
+    fresh_template_body = st.text_area(
+        "Fresh Mail Template",
+        value="Dear {first_name},\n\nThis is my initial outreach.\n\nRegards,\n{full_name}",
+        height=200
+    )
+    
+    reminder_template_body = None
+    if email_type != "Fresh Mail":
+        reminder_template_body = st.text_area(
+            f"{email_type} Template",
+            value="Dear {first_name},\n\nJust following up regarding my previous email.\n\nBest regards,\n{full_name}",
             height=200
         )
-        if email_type != "Fresh Mail":
-            reminder_template_html = st.text_area(
-                f"{email_type} Template (Plain Text)",
-                value="Dear {first_name},\n\nJust following up regarding my previous email.\n\nBest regards,\n{full_name}",
-                height=200
-            )
-
+    
     st.session_state.email_template_ready = True
 
 # ----------------- DELAY -----------------
@@ -188,7 +161,7 @@ if st.button("🚀 Send Emails"):
         failed_emails = []
 
         if email_type == "Fresh Mail":
-            state["fresh_mail_html"] = fresh_template_html
+            state["fresh_mail_body"] = fresh_template_body
             save_state(state)
 
         for idx, row in df.iloc[start_index:].iterrows():
@@ -200,17 +173,17 @@ if st.button("🚀 Send Emails"):
             subject = subject_template.format(first_name=first, last_name=last, full_name=full_name)
 
             if email_type == "Fresh Mail":
-                body = fresh_template_html.format(first_name=first, last_name=last, full_name=full_name)
+                body = fresh_template_body.format(first_name=first, last_name=last, full_name=full_name)
             else:
-                reminder_body = reminder_template_html.format(first_name=first, last_name=last, full_name=full_name)
-                original_body = state.get("fresh_mail_html", "").format(first_name=first, last_name=last, full_name=full_name)
-                body = reminder_body + "<br><br>----- Original Message -----<br>" + original_body
+                reminder_body = reminder_template_body.format(first_name=first, last_name=last, full_name=full_name)
+                original_body = state.get("fresh_mail_body", "").format(first_name=first, last_name=last, full_name=full_name)
+                body = reminder_body + "\n\n----- Original Message -----\n" + original_body
 
             msg = MIMEMultipart()
             msg["From"] = f"{sender_name} <{sender_email}>"
             msg["To"] = recipient
             msg["Subject"] = subject
-            msg.attach(MIMEText(body, "html"))
+            msg.attach(MIMEText(body, "plain"))
 
             try:
                 server.sendmail(sender_email, recipient, msg.as_string())
@@ -223,5 +196,24 @@ if st.button("🚀 Send Emails"):
 
             # Update progress & status
             progress.progress((idx + 1)/total)
-            status_placeholder.markdown(
-                f"<div class='progress-box' style='background-color:#dff0d8;color
+            status_placeholder.markdown(f"✅ Sent: {success_count} | ❌ Failed: {fail_count} | 📩 Total: {total}")
+
+            # Countdown
+            if idx < total - 1:
+                for remaining in range(delay,0,-1):
+                    countdown_placeholder.markdown(f"⏳ Waiting **{remaining} seconds** before next email...")
+                    time.sleep(1)
+                countdown_placeholder.empty()
+
+        server.quit()
+        st.success(f"🎉 Process completed!\n✅ Sent: {success_count}\n❌ Failed: {fail_count}\n📩 Total: {total}")
+
+        # Export failed emails
+        if fail_count > 0:
+            failed_df = pd.DataFrame(failed_emails)
+            buffer = BytesIO()
+            failed_df.to_csv(buffer, index=False)
+            buffer.seek(0)
+            st.download_button(label="⬇️ Download Failed Emails CSV", data=buffer, file_name="failed_emails.csv", mime="text/csv")
+    else:
+        st.warning("⚠️ Please provide login details and upload a valid CSV.")
